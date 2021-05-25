@@ -128,6 +128,7 @@ namespace {
 ALWAYS_INLINE void send_releaseAsAssociatedObject(void* associatedObject, ReleaseMode mode) {
   if (associatedObject != nullptr) {
     auto msgSend = reinterpret_cast<void (*)(void* self, SEL cmd, ReleaseMode mode)>(&objc_msgSend);
+    kotlin::ThreadStateGuard guard(kotlin::ThreadState::kNative);
     msgSend(associatedObject, Kotlin_ObjCExport_releaseAsAssociatedObjectSelector, mode);
   }
 }
@@ -498,6 +499,8 @@ static id Kotlin_ObjCExport_refToObjC_slowpath(ObjHeader* obj);
 
 template <bool retainAutorelease>
 static ALWAYS_INLINE id Kotlin_ObjCExport_refToObjCImpl(ObjHeader* obj) {
+  kotlin::AssertThreadState(kotlin::ThreadState::kRunnable);
+
   if (obj == nullptr) return nullptr;
 
   id associatedObject = GetAssociatedObject(obj);
@@ -536,6 +539,8 @@ extern "C" OBJ_GETTER(Kotlin_Interop_CreateObjCObjectHolder, id obj) {
 }
 
 extern "C" OBJ_GETTER(Kotlin_ObjCExport_refFromObjC, id obj) {
+  kotlin::AssertThreadState(kotlin::ThreadState::kRunnable);
+
   if (obj == nullptr) RETURN_OBJ(nullptr);
   auto msgSend = reinterpret_cast<ObjHeader* (*)(id self, SEL cmd, ObjHeader** slot)>(&objc_msgSend);
   RETURN_RESULT_OF(msgSend, obj, Kotlin_ObjCExport_toKotlinSelector);
