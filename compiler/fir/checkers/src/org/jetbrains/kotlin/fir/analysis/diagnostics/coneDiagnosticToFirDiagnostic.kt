@@ -15,6 +15,8 @@ import org.jetbrains.kotlin.fir.declarations.isOperator
 import org.jetbrains.kotlin.fir.diagnostics.*
 import org.jetbrains.kotlin.fir.resolve.calls.*
 import org.jetbrains.kotlin.fir.resolve.diagnostics.*
+import org.jetbrains.kotlin.fir.resolve.inference.ConeTypeParameterBasedTypeVariable
+import org.jetbrains.kotlin.fir.resolve.inference.ConeTypeVariableForLambdaReturnType
 import org.jetbrains.kotlin.fir.resolve.inference.model.ConeArgumentConstraintPosition
 import org.jetbrains.kotlin.fir.resolve.inference.model.ConeExpectedTypeConstraintPosition
 import org.jetbrains.kotlin.fir.resolve.inference.model.ConeExplicitTypeParameterConstraintPosition
@@ -207,6 +209,7 @@ private fun mapSystemHasContradictionError(
                     qualifiedAccessSource,
                     diagnostic.candidate.callInfo.session.typeContext,
                     errorsToIgnore,
+                    diagnostic.candidate,
                 )
             )
         }
@@ -218,6 +221,7 @@ private fun mapSystemHasContradictionError(
                     is NewConstraintError -> "NewConstraintError at ${it.position}: ${it.lowerType} <!: ${it.upperType}"
                     // Error should be reported on the error type itself
                     is ConstrainingTypeIsError -> return@firstNotNullOfOrNull null
+                    is NotEnoughInformationForTypeParameter<*> -> return@firstNotNullOfOrNull null
                     else -> "Inference error: ${it::class.simpleName}"
                 }
 
@@ -239,6 +243,7 @@ private fun ConstraintSystemError.toDiagnostic(
     qualifiedAccessSource: FirSourceElement?,
     typeContext: ConeTypeContext,
     errorsToIgnore: MutableSet<ConstraintSystemError>,
+    candidate: Candidate,
 ): FirDiagnostic<FirSourceElement>? {
     return when (this) {
         is NewConstraintError -> {
@@ -285,6 +290,25 @@ private fun ConstraintSystemError.toDiagnostic(
                 }
                 else -> null
             }
+        }
+        is NotEnoughInformationForTypeParameter<*> -> {
+            val isDiagnosticRedundant = candidate.system.errors.any { otherError ->
+                (otherError is ConstrainingTypeIsError && otherError.typeVariable == this.typeVariable)
+                        || otherError is NewConstraintError
+            }
+
+            if (isDiagnosticRedundant) return null
+
+            val typeVariableName = when (val typeVariable = this.typeVariable) {
+                is ConeTypeParameterBasedTypeVariable -> typeVariable.typeParameterSymbol.name.asString()
+                is ConeTypeVariableForLambdaReturnType -> "return type of lambda"
+                else -> error("Unsupported type variable: $typeVariable")
+            }
+
+            FirErrors.NEW_INFERENCE_NO_INFORMATION_FOR_PARAMETER.on(
+                source,
+                typeVariableName,
+            )
         }
         else -> null
     }
