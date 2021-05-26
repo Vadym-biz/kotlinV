@@ -19,7 +19,7 @@ public fun <T> builder(@BuilderInference block: In<T>.() -> Unit) {
 suspend fun yield() {}
 
 fun test() {
-    builder {
+    <!NEW_INFERENCE_NO_INFORMATION_FOR_PARAMETER!>builder<!> {
         send(run {
             yield() // No error but `yield` is not inside "suspension" context actually
         })
