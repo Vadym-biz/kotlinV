@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
+import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignation
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirModuleResolveState
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.LowLevelFirApiFacadeForResolveOnAir
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.collectDesignation
@@ -24,6 +25,7 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyDeclarati
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.RawFirNonLocalDeclarationBuilder
 import org.jetbrains.kotlin.idea.fir.low.level.api.providers.FirIdeProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.providers.firIdeProvider
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.resolvePhaseWithForAllDeclarations
 import org.jetbrains.kotlin.psi.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -133,10 +135,8 @@ internal class ReanalyzableFunctionStructureElement(
                 replaceContractDescription(temporaryFunction.contractDescription)
                 replaceResolvePhase(upgradedPhase)
             }
-
-            //Downgrade designation to be sure that path in correct state (do not leave downgraded state out of the lock)
-            designation.path.forEach {
-                it.replaceResolvePhase(minOf(it.resolvePhase, upgradedPhase))
+            designation.toSequence(includeTarget = true).forEach {
+                it.resolvePhaseWithForAllDeclarations = minOf(it.resolvePhaseWithForAllDeclarations, upgradedPhase)
             }
 
             firLazyDeclarationResolver.lazyResolveDeclaration(
@@ -144,7 +144,6 @@ internal class ReanalyzableFunctionStructureElement(
                 cache,
                 FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
-                reresolveFile = true,
             )
 
             ReanalyzableFunctionStructureElement(
@@ -198,9 +197,8 @@ internal class ReanalyzablePropertyStructureElement(
                 replaceResolvePhase(upgradedPhase)
             }
 
-            //Downgrade designation to be sure that path in correct state (do not leave downgraded state out of the lock)
-            designation.path.forEach {
-                it.replaceResolvePhase(minOf(it.resolvePhase, upgradedPhase))
+            designation.toSequence(includeTarget = true).forEach {
+                it.resolvePhaseWithForAllDeclarations = minOf(it.resolvePhaseWithForAllDeclarations, upgradedPhase)
             }
 
             firLazyDeclarationResolver.lazyResolveDeclaration(
@@ -208,7 +206,6 @@ internal class ReanalyzablePropertyStructureElement(
                 cache,
                 FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
-                reresolveFile = true,
             )
 
             ReanalyzablePropertyStructureElement(

@@ -145,7 +145,12 @@ open class FirApplySupertypesTransformer(
     }
 
     override fun transformTypeAlias(typeAlias: FirTypeAlias, data: Any?): FirDeclaration {
-        if (typeAlias.expandedTypeRef is FirResolvedTypeRef) return typeAlias
+        if (typeAlias.expandedTypeRef is FirResolvedTypeRef) {
+            if (needReplacePhase(typeAlias)) {
+                typeAlias.replaceResolvePhase(FirResolvePhase.SUPER_TYPES)
+            }
+            return typeAlias
+        }
         val supertypeRefs = getResolvedSupertypeRefs(typeAlias)
 
         assert(supertypeRefs.size == 1) {
@@ -404,7 +409,7 @@ private fun createErrorTypeRef(fir: FirElement, message: String) = buildErrorTyp
 class SupertypeComputationSession {
     private val fileScopesMap = hashMapOf<FirFile, ScopePersistentList>()
     private val scopesForNestedClassesMap = hashMapOf<FirClass<*>, ScopePersistentList>()
-    private val supertypeStatusMap = linkedMapOf<FirClassLikeDeclaration<*>, SupertypeComputationStatus>()
+    val supertypeStatusMap = linkedMapOf<FirClassLikeDeclaration<*>, SupertypeComputationStatus>()
 
     val supertypesSupplier: SupertypeSupplier = object : SupertypeSupplier() {
         override fun forClass(firClass: FirClass<*>, useSiteSession: FirSession): List<ConeClassLikeType> {

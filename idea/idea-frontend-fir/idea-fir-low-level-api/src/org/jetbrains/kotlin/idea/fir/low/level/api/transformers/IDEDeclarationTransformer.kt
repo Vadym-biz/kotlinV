@@ -33,8 +33,12 @@ internal class IDEDeclarationTransformer(private val designation: FirDeclaration
         declaration: K,
         data: D,
         default: () -> K
-    ): K = processDeclarationContent(declaration, default) {
-        it.visitNoTransform(transformer, data)
+    ): K = processDeclarationContent(declaration, default) { toTransform ->
+        toTransform.transform<FirElement, D>(transformer, data).also { transformed ->
+            check(transformed === toTransform) {
+                "become $transformed `${transformed.render()}`, was ${toTransform}: `${toTransform.render()}`"
+            }
+        }
     }
 
     inline fun <K : FirDeclaration> processDeclarationContent(
@@ -72,9 +76,4 @@ internal class IDEDeclarationTransformer(private val designation: FirDeclaration
     fun ensureDesignationPassed() {
         check(designationPassed) { "Designation not passed for declaration ${designation.declaration::class.simpleName}" }
     }
-}
-
-private fun <D> FirElement.visitNoTransform(transformer: FirTransformer<D>, data: D) {
-    val result = this.transform<FirElement, D>(transformer, data)
-    require(result === this) { "become $result `${result.render()}`, was ${this}: `${this.render()}`" }
 }

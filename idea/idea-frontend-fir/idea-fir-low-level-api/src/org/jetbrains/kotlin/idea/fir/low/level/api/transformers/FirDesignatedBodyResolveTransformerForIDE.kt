@@ -13,6 +13,8 @@ import org.jetbrains.kotlin.fir.resolve.transformers.FirProviderInterceptor
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.*
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignationWithFile
 import org.jetbrains.kotlin.idea.fir.low.level.api.element.builder.FirIdeDesignatedBodyResolveTransformerForReturnTypeCalculator
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.isResolvedForAllDeclarations
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedForAllDeclarations
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhase
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhaseForClasses
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.isTargetCallableDeclarationAndInPhase
@@ -21,8 +23,9 @@ internal class FirDesignatedBodyResolveTransformerForIDE(
     private val designation: FirDeclarationUntypedDesignationWithFile,
     session: FirSession,
     scopeSession: ScopeSession,
+    private val isOnAirResolve: Boolean,
     towerDataContextCollector: FirTowerDataContextCollector? = null,
-    firProviderInterceptor: FirProviderInterceptor? = null,
+    firProviderInterceptor: FirProviderInterceptor?,
 ) : FirLazyTransformerForIDE, FirBodyResolveTransformer(
     session,
     phase = FirResolvePhase.BODY_RESOLVE,
@@ -41,12 +44,16 @@ internal class FirDesignatedBodyResolveTransformerForIDE(
 
     override fun transformDeclarationContent(declaration: FirDeclaration, data: ResolutionMode): FirDeclaration =
         ideDeclarationTransformer.transformDeclarationContent(this, declaration, data) {
+            designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.BODY_RESOLVE)
             super.transformDeclarationContent(declaration, data)
         }
 
-    override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = true
+    override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean =
+        ideDeclarationTransformer.needReplacePhase && firDeclaration.resolvePhase < FirResolvePhase.BODY_RESOLVE
 
     override fun transformDeclaration() {
+        if (designation.isResolvedForAllDeclarations(FirResolvePhase.BODY_RESOLVE, isOnAirResolve)) return
+        designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.BODY_RESOLVE)
         if (designation.isTargetCallableDeclarationAndInPhase(FirResolvePhase.BODY_RESOLVE)) return
 
         (designation.declaration as? FirCallableDeclaration<*>)?.ensurePhase(FirResolvePhase.CONTRACTS)

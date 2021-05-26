@@ -70,15 +70,6 @@ internal class FirFileBuilder(
         return firFile
     }
 
-    /**
-     * Runs [resolve] function (which is considered to do some resolve on [firFile]) under a lock for [firFile]
-     */
-    inline fun <R> runCustomResolveUnderLock(firFile: FirFile, cache: ModuleFileCache, resolve: () -> R): R =
-        cache.firFileLockProvider.withWriteLock(firFile) { resolve() }
-
-    inline fun <R : Any> runCustomResolveWithPCECheck(firFile: FirFile, cache: ModuleFileCache, resolve: () -> R): R =
-        cache.firFileLockProvider.withWriteLockPCECheck(firFile, LOCKING_INTERVAL_MS, resolve)
-
     fun runResolveWithoutLock(
         firFile: FirFile,
         fromPhase: FirResolvePhase,
@@ -99,6 +90,15 @@ internal class FirFileBuilder(
 
 
     companion object {
+        /**
+         * Runs [resolve] function (which is considered to do some resolve on [firFile]) under a lock for [firFile]
+         */
+        inline fun <R> runCustomResolveUnderLock(firFile: FirFile, cache: ModuleFileCache, resolve: () -> R): R =
+            cache.firFileLockProvider.withWriteLock(firFile) { resolve() }
+
+        inline fun <R : Any> runCustomResolveWithPCECheck(firFile: FirFile, cache: ModuleFileCache, resolve: () -> R): R =
+            cache.firFileLockProvider.withWriteLockPCECheck(firFile, LOCKING_INTERVAL_MS, resolve)
+
         private const val LOCKING_INTERVAL_MS = 500L
     }
 }

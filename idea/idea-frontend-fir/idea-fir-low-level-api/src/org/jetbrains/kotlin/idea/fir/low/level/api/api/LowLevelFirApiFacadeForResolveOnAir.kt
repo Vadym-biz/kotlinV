@@ -78,7 +78,6 @@ object LowLevelFirApiFacadeForResolveOnAir {
         val declaration = runBodyResolveOnAir(
             state = state,
             replacement = RawFirReplacement(place, elementToResolve),
-            isOnAirResolve = true,
         )
 
         val expressionLocator = object : FirVisitorVoid() {
@@ -115,7 +114,6 @@ object LowLevelFirApiFacadeForResolveOnAir {
                     state = state,
                     collector = it,
                     replacement = RawFirReplacement(validPlace, validPlace),
-                    isOnAirResolve = false //isOnAirResolve can be little faster because node resolved in it's context
                 )
             }
         }
@@ -169,7 +167,6 @@ object LowLevelFirApiFacadeForResolveOnAir {
         val copiedFirDeclaration = runBodyResolveOnAir(
             originalState,
             replacement = RawFirReplacement(sameDeclarationInOriginalFile, dependencyNonLocalDeclaration),
-            isOnAirResolve = true,
             collector = collector,
         )
 
@@ -204,7 +201,6 @@ object LowLevelFirApiFacadeForResolveOnAir {
     private fun runBodyResolveOnAir(
         state: FirModuleResolveStateImpl,
         replacement: RawFirReplacement,
-        isOnAirResolve: Boolean,
         collector: FirTowerDataContextCollector? = null,
     ): FirElement {
 
@@ -258,10 +254,9 @@ object LowLevelFirApiFacadeForResolveOnAir {
                 firDeclarationToResolve = copiedFirDeclaration,
                 moduleFileCache = state.rootModuleSession.cache,
                 containerFirFile = originalFirFile,
-                provider = originalFirFile.moduleData.session.firIdeProvider,
                 toPhase = FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
-                isOnAirResolve = isOnAirResolve,
+                isOnAirResolve = true,
                 towerDataContextCollector = collector,
             )
 

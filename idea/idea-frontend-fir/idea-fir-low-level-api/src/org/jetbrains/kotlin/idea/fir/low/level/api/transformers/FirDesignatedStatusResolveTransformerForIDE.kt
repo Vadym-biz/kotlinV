@@ -7,11 +7,15 @@ package org.jetbrains.kotlin.idea.fir.low.level.api.transformers
 
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
+import org.jetbrains.kotlin.fir.containingClass
 import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.transformers.FirStatusResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.StatusComputationSession
+import org.jetbrains.kotlin.fir.symbols.ConeClassLikeLookupTag
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignationWithFile
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.isResolvedForAllDeclarations
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedForAllDeclarations
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensureDesignation
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhase
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.isTargetCallableDeclarationAndInPhase
@@ -20,13 +24,14 @@ internal class FirDesignatedStatusResolveTransformerForIDE(
     private val designation: FirDeclarationUntypedDesignationWithFile,
     private val session: FirSession,
     private val scopeSession: ScopeSession,
+    private val isOnAirResolve: Boolean,
 ) : FirLazyTransformerForIDE {
     private inner class FirDesignatedStatusResolveTransformerForIDE :
         FirStatusResolveTransformer(session, scopeSession, StatusComputationSession.Regular()) {
 
         val designationTransformer = IDEDeclarationTransformer(designation)
 
-        override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = true
+        override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = firDeclaration.resolvePhase < FirResolvePhase.STATUS
 
         override fun transformDeclarationContent(declaration: FirDeclaration, data: FirResolvedDeclarationStatus?): FirDeclaration =
             designationTransformer.transformDeclarationContent(this, declaration, data) {
@@ -35,7 +40,9 @@ internal class FirDesignatedStatusResolveTransformerForIDE(
     }
 
     override fun transformDeclaration() {
-        if (designation.isTargetCallableDeclarationAndInPhase(FirResolvePhase.STATUS)) return
+        if (designation.isResolvedForAllDeclarations(FirResolvePhase.STATUS, isOnAirResolve)) return
+        designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.STATUS)
+
         designation.ensureDesignation(FirResolvePhase.TYPES)
 
         val transformer = FirDesignatedStatusResolveTransformerForIDE()
@@ -54,7 +61,9 @@ internal class FirDesignatedStatusResolveTransformerForIDE(
     }
 
     private fun FirDeclaration.ensureResolved() {
-        ensurePhase(FirResolvePhase.STATUS)
+        if (this !is FirAnonymousInitializer) {
+            ensurePhase(FirResolvePhase.STATUS)
+        }
         when (this) {
             is FirSimpleFunction -> check(status is FirResolvedDeclarationStatus)
             is FirConstructor -> check(status is FirResolvedDeclarationStatus)

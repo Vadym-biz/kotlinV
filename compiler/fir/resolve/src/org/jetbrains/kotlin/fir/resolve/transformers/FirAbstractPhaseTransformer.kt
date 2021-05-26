@@ -34,7 +34,9 @@ abstract class FirAbstractPhaseTransformer<D>(
     }
 
     override fun transformDeclaration(declaration: FirDeclaration, data: D): FirDeclaration {
-        declaration.replaceResolvePhase(transformerPhase)
+        if (declaration.resolvePhase < transformerPhase) {
+            declaration.replaceResolvePhase(transformerPhase)
+        }
 
         return super.transformDeclaration(declaration, data)
     }
