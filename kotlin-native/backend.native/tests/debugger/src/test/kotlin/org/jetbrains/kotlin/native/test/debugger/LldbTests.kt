@@ -284,11 +284,37 @@ class LldbTests {
               frame #3: [..] kt42208.kexe`kfun:#bar(v=[]){} at kt42208-3.kt:2:4
               frame #4: [..] kt42208.kexe`kfun:#main(){} at kt42208-1.kt:3:5
               frame #5: [..] kt42208.kexe`Konan_start(args=[]) at kt42208-1.kt:1:1
-              frame #6: [..] kt42208.kexe`Init_and_run_start + 107
-              frame #7: [..]
-              frame #8: [..]
             > c
         """.trimIndent().lldb(binary)
+    }
+
+    @Test
+    fun `kt33982`() = lldbComplexTest {
+        val kt33982 = """
+            |tailrec fun tailrecFun(number: Int): Int = if (number < 10) {
+            |    number
+            |} else {
+            |    tailrecFun(number - 1) // breakpoint here
+            |}
+            |
+            |fun main() {
+            |    tailrecFun(15)
+            |}
+        """.trimMargin().binary("kt33982", "-g")
+        """
+            > b 4
+            Breakpoint 1: where = [..]kfun:#tailrecFun(kotlin.Int){}kotlin.Int [..] at kt33982.kt:4:[..]
+            > ${lldbCommandRunOrContinue()}
+            > fr v
+            (int) number = 15
+            > c
+            > fr v
+            (int) number = 14
+            > c
+            > fr v
+            (int) number = 13
+            > q
+        """.trimIndent().lldb(kt33982)
     }
 
 }
