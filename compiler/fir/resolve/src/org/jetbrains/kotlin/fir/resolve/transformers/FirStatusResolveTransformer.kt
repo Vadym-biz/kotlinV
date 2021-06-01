@@ -253,7 +253,7 @@ abstract class AbstractFirStatusResolveTransformer(
     protected abstract fun FirDeclaration.needResolveMembers(): Boolean
     protected abstract fun FirDeclaration.needResolveNestedClassifiers(): Boolean
 
-    protected open fun needReplacePhase(firDeclaration: FirDeclaration) = true
+    protected open fun needReplacePhase(firDeclaration: FirDeclaration) = transformerPhase > firDeclaration.resolvePhase
 
     override fun transformFile(file: FirFile, data: FirResolvedDeclarationStatus?): FirFile {
         if (needReplacePhase(file)) {

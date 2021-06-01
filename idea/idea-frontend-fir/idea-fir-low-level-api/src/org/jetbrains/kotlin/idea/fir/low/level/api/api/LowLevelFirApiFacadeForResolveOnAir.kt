@@ -15,7 +15,6 @@ import org.jetbrains.kotlin.fir.realPsi
 import org.jetbrains.kotlin.fir.resolve.FirTowerDataContext
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.asTowerDataElement
-import org.jetbrains.kotlin.fir.resolve.firProvider
 import org.jetbrains.kotlin.fir.resolve.transformers.FirTypeResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirTowerDataContextCollector
 import org.jetbrains.kotlin.fir.scopes.createImportingScopes
@@ -36,6 +35,7 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.buildFileFirAnno
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.buildFirUserTypeRef
 import org.jetbrains.kotlin.idea.fir.low.level.api.providers.firIdeProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.sessions.FirIdeSourcesSession
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirProviderInterceptorForIDE
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.originalDeclaration
 import org.jetbrains.kotlin.idea.util.getElementTextInContext
 import org.jetbrains.kotlin.idea.util.ifTrue
@@ -78,6 +78,7 @@ object LowLevelFirApiFacadeForResolveOnAir {
         val declaration = runBodyResolveOnAir(
             state = state,
             replacement = RawFirReplacement(place, elementToResolve),
+            resolveWithUnchangedFir = false
         )
 
         val expressionLocator = object : FirVisitorVoid() {
@@ -113,6 +114,7 @@ object LowLevelFirApiFacadeForResolveOnAir {
                 runBodyResolveOnAir(
                     state = state,
                     collector = it,
+                    resolveWithUnchangedFir = true,
                     replacement = RawFirReplacement(validPlace, validPlace),
                 )
             }
@@ -167,6 +169,7 @@ object LowLevelFirApiFacadeForResolveOnAir {
         val copiedFirDeclaration = runBodyResolveOnAir(
             originalState,
             replacement = RawFirReplacement(sameDeclarationInOriginalFile, dependencyNonLocalDeclaration),
+            resolveWithUnchangedFir = false,
             collector = collector,
         )
 
@@ -201,6 +204,7 @@ object LowLevelFirApiFacadeForResolveOnAir {
     private fun runBodyResolveOnAir(
         state: FirModuleResolveStateImpl,
         replacement: RawFirReplacement,
+        resolveWithUnchangedFir: Boolean,
         collector: FirTowerDataContextCollector? = null,
     ): FirElement {
 
@@ -226,10 +230,12 @@ object LowLevelFirApiFacadeForResolveOnAir {
         val originalDeclaration = nonLocalDeclaration.getOrBuildFir(state)
         check(originalDeclaration is FirDeclaration) { "Invalid original declaration type ${originalDeclaration::class.simpleName}" }
 
+        val originalDesignation = originalDeclaration.collectDesignation()
+
         val newDeclarationWithReplacement = RawFirNonLocalDeclarationBuilder.buildWithReplacement(
             session = originalDeclaration.moduleData.session,
             scopeProvider = originalDeclaration.moduleData.session.firIdeProvider.kotlinScopeProvider,
-            designation = originalDeclaration.collectDesignation(),
+            designation = originalDesignation,
             rootNonLocalDeclaration = nonLocalDeclaration,
             replacement = replacement,
         )
@@ -245,21 +251,24 @@ object LowLevelFirApiFacadeForResolveOnAir {
                         originalDeclaration.withBodyFrom(newDeclarationWithReplacement as FirProperty)
                     is FirRegularClass ->
                         originalDeclaration.withBodyFrom(newDeclarationWithReplacement as FirRegularClass)
-                    is FirTypeAlias -> originalDeclaration
+                    is FirTypeAlias -> newDeclarationWithReplacement
                     else -> error("Not supported type ${originalDeclaration::class.simpleName}")
                 }
             } ?: newDeclarationWithReplacement
 
-            state.firLazyDeclarationResolver.lazyDesignatedResolveDeclaration(
-                firDeclarationToResolve = copiedFirDeclaration,
+            val onAirDesignation = FirDeclarationUntypedDesignationWithFile(
+                path = originalDesignation.path,
+                declaration = copiedFirDeclaration,
+                isLocalDesignation = false,
+                firFile = originalFirFile
+            )
+            state.firLazyDeclarationResolver.runLazyDesignatedOnAirResolveToBodyWithoutLock(
+                designation = onAirDesignation,
                 moduleFileCache = state.rootModuleSession.cache,
-                containerFirFile = originalFirFile,
-                toPhase = FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
-                isOnAirResolve = true,
+                resolveWithUnchangedFir = resolveWithUnchangedFir,
                 towerDataContextCollector = collector,
             )
-
             copiedFirDeclaration
         }
 

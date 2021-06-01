@@ -44,7 +44,7 @@ internal class FirDesignatedBodyResolveTransformerForIDE(
 
     override fun transformDeclarationContent(declaration: FirDeclaration, data: ResolutionMode): FirDeclaration =
         ideDeclarationTransformer.transformDeclarationContent(this, declaration, data) {
-            designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.BODY_RESOLVE)
+            declaration.updateResolvedForAllDeclarations(FirResolvePhase.BODY_RESOLVE)
             super.transformDeclarationContent(declaration, data)
         }
 

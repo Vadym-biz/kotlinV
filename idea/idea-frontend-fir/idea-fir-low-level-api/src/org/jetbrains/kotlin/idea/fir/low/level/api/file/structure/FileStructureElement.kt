@@ -12,7 +12,6 @@ import org.jetbrains.kotlin.fir.psi
 import org.jetbrains.kotlin.fir.symbols.AbstractFirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirFunctionSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirPropertySymbol
-import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignation
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirModuleResolveState
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.LowLevelFirApiFacadeForResolveOnAir
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.collectDesignation
@@ -140,9 +139,9 @@ internal class ReanalyzableFunctionStructureElement(
             }
 
             firLazyDeclarationResolver.lazyResolveDeclaration(
-                originalFunction,
-                cache,
-                FirResolvePhase.BODY_RESOLVE,
+                firDeclarationToResolve = originalFunction,
+                moduleFileCache = cache,
+                toPhase = FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
             )
 
@@ -202,9 +201,9 @@ internal class ReanalyzablePropertyStructureElement(
             }
 
             firLazyDeclarationResolver.lazyResolveDeclaration(
-                originalProperty,
-                cache,
-                FirResolvePhase.BODY_RESOLVE,
+                firDeclarationToResolve = originalProperty,
+                moduleFileCache = cache,
+                toPhase = FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
             )
 

@@ -33,7 +33,7 @@ abstract class FirAbstractTreeTransformerWithSuperTypes(
     protected val scopes = mutableListOf<FirScope>()
     protected val towerScope = FirCompositeScope(scopes.asReversed())
 
-    protected open fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = true
+    protected open fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = transformerPhase > firDeclaration.resolvePhase
 
     protected inline fun <T> withScopeCleanup(crossinline l: () -> T): T {
         val sizeBefore = scopes.size

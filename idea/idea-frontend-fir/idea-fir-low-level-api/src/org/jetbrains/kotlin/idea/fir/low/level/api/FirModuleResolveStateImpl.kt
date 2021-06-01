@@ -34,7 +34,6 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.util.FirElementFinder
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.findSourceNonLocalFirDeclaration
 import org.jetbrains.kotlin.idea.util.getElementTextInContext
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 
 internal class FirModuleResolveStateImpl(
     override val project: Project,
@@ -97,15 +96,12 @@ internal class FirModuleResolveStateImpl(
 
         if (ktDeclaration == nonLocalNamedDeclaration) return nonLocalFirForNamedDeclaration
 
-        if (nonLocalFirForNamedDeclaration.resolvePhase < FirResolvePhase.BODY_RESOLVE) {
-            val cache = (nonLocalFirForNamedDeclaration.moduleData.session as FirIdeSourcesSession).cache
-            firLazyDeclarationResolver.lazyResolveDeclaration(
-                nonLocalFirForNamedDeclaration,
-                cache,
-                FirResolvePhase.BODY_RESOLVE,
-                checkPCE = false, /*TODO*/
-            )
-        }
+        firLazyDeclarationResolver.lazyResolveDeclaration(
+            firDeclarationToResolve = nonLocalFirForNamedDeclaration,
+            moduleFileCache = (nonLocalFirForNamedDeclaration.moduleData.session as FirIdeSourcesSession).cache,
+            toPhase = FirResolvePhase.BODY_RESOLVE,
+            checkPCE = false, /*TODO*/
+        )
         val firDeclaration = FirElementFinder.findElementIn<FirDeclaration>(nonLocalFirForNamedDeclaration) { firDeclaration ->
             when (val realPsi = firDeclaration.realPsi) {
                 is KtObjectLiteralExpression -> realPsi.objectDeclaration == ktDeclaration
@@ -123,9 +119,9 @@ internal class FirModuleResolveStateImpl(
             else -> return declaration
         }
         firLazyDeclarationResolver.lazyResolveDeclaration(
-            declaration,
-            fileCache,
-            toPhase,
+            firDeclarationToResolve = declaration,
+            moduleFileCache = fileCache,
+            toPhase = toPhase,
             checkPCE = true,
         )
         return declaration
@@ -137,9 +133,9 @@ internal class FirModuleResolveStateImpl(
             else -> return declaration
         }
         firLazyDeclarationResolver.lazyResolveDeclaration(
-            declaration,
-            fileCache,
-            type,
+            firDeclaration = declaration,
+            moduleFileCache = fileCache,
+            toResolveType = type,
             checkPCE = true,
         )
         return declaration

@@ -8,6 +8,8 @@ package org.jetbrains.kotlin.idea.fir.low.level.api.transformers
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.declarations.*
+import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
+import org.jetbrains.kotlin.fir.expressions.FirStatement
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.transformers.FirTypeResolveTransformer
 import org.jetbrains.kotlin.fir.types.FirImplicitTypeRef
@@ -26,8 +28,6 @@ internal class FirDesignatedTypeResolverTransformerForIDE(
 ) : FirLazyTransformerForIDE, FirTypeResolveTransformer(session, scopeSession) {
 
     private val declarationTransformer = IDEDeclarationTransformer(designation)
-
-    override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = firDeclaration.resolvePhase < FirResolvePhase.TYPES
 
     override fun <E : FirElement> transformElement(element: E, data: Any?): E {
         return if (element is FirDeclaration && (element is FirRegularClass || element is FirFile)) {

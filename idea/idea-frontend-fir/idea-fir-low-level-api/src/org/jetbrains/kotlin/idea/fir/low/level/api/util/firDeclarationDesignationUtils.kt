@@ -18,9 +18,6 @@ internal fun FirDeclaration.ensurePhase(firResolvePhase: FirResolvePhase) =
 internal fun FirDeclarationUntypedDesignation.ensurePathPhase(firResolvePhase: FirResolvePhase) =
     path.forEach { it.ensurePhase(firResolvePhase) }
 
-//internal fun FirDeclarationUntypedDesignation.ensureTargetPhase(firResolvePhase: FirResolvePhase) =
-//    declaration.ensurePhase(firResolvePhase)
-
 internal fun FirDeclarationUntypedDesignation.ensureDesignation(firResolvePhase: FirResolvePhase) {
     ensurePathPhase(firResolvePhase)
     declaration.ensurePhase(firResolvePhase)

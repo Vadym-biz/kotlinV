@@ -105,9 +105,9 @@ internal class FileStructure(
             firFile
         )
         firLazyDeclarationResolver.lazyResolveDeclaration(
-            firDeclaration,
-            moduleFileCache,
-            FirResolvePhase.BODY_RESOLVE,
+            firDeclarationToResolve = firDeclaration,
+            moduleFileCache = moduleFileCache,
+            toPhase = FirResolvePhase.BODY_RESOLVE,
             checkPCE = true,
         )
         return moduleFileCache.firFileLockProvider.withReadLock(firFile) {

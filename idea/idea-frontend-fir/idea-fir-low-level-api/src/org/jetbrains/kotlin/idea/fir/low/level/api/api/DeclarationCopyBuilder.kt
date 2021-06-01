@@ -45,6 +45,13 @@ internal object DeclarationCopyBuilder {
             replacementSetter
         }
 
+        val propertyResolvePhase = minOf(
+            this@withBodyFrom.resolvePhase,
+            FirResolvePhase.DECLARATIONS,
+            copySetter?.resolvePhase ?: FirResolvePhase.BODY_RESOLVE,
+            propertyWithBody.getter?.resolvePhase ?: FirResolvePhase.BODY_RESOLVE,
+        )
+
         return buildPropertyCopy(this@withBodyFrom) {
             symbol = propertyWithBody.symbol
             initializer = propertyWithBody.initializer
@@ -53,6 +60,7 @@ internal object DeclarationCopyBuilder {
             setter = copySetter
 
             initDeclaration(this@withBodyFrom, propertyWithBody)
+            resolvePhase = propertyResolvePhase
         }
     }
 
