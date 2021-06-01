@@ -7,6 +7,7 @@ package org.jetbrains.kotlin.fir.resolve.inference
 
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.declarations.FirAnnotatedDeclaration
+import org.jetbrains.kotlin.fir.declarations.FirCallableMemberDeclaration
 import org.jetbrains.kotlin.fir.declarations.hasAnnotation
 import org.jetbrains.kotlin.fir.expressions.FirArgumentList
 import org.jetbrains.kotlin.fir.expressions.FirResolvable
@@ -83,7 +84,19 @@ class FirBuilderInferenceSession(
 
     override fun <T> addCompetedCall(call: T, candidate: Candidate) where T : FirResolvable, T : FirStatement {
         if (skipCall(call)) return
+
+        //if ((candidate.symbol.fir as? FirProperty)?.isLocal != true && !anyReceiverContainsStub(candidate)) return
+
         commonCalls += call to candidate
+    }
+
+    private fun anyReceiverContainsStub(candidate: Candidate): Boolean {
+        val fir = candidate.symbol.fir as? FirCallableMemberDeclaration<*> ?: return false
+        if (fir.dispatchReceiverType?.containsStubType() == true) return true
+
+        val extensionType = fir.receiverTypeRef?.coneType?.let(candidate.substitutor::substituteOrSelf) ?: return false
+
+        return extensionType.containsStubType()
     }
 
     override fun <T> writeOnlyStubs(call: T): Boolean where T : FirResolvable, T : FirStatement {
@@ -108,7 +121,8 @@ class FirBuilderInferenceSession(
 
     override fun inferPostponedVariables(
         lambda: ResolvedLambdaAtom,
-        initialStorage: ConstraintStorage
+        initialStorage: ConstraintStorage,
+        completionMode: ConstraintSystemCompletionMode
     ): Map<ConeTypeVariableTypeConstructor, ConeKotlinType>? {
         val (commonSystem, effectivelyEmptyConstraintSystem) = buildCommonSystem(initialStorage)
         if (effectivelyEmptyConstraintSystem) {
@@ -120,7 +134,7 @@ class FirBuilderInferenceSession(
         @Suppress("UNCHECKED_CAST")
         components.callCompleter.completer.complete(
             context,
-            ConstraintSystemCompletionMode.FULL,
+            completionMode,
             partiallyResolvedCalls.map { it.first as FirStatement },
             components.session.builtinTypes.unitType.type, resolutionContext,
             collectVariablesFromContext = true
