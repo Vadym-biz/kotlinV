@@ -6457,6 +6457,11 @@ public class JsCodegenBoxTestGenerated extends AbstractJsCodegenBoxTest {
                         KtTestUtil.assertAllTestsPresentByMetadataWithExcluded(this.getClass(), new File("compiler/testData/codegen/box/coroutines/featureIntersection/callableReference/function"), Pattern.compile("^(.+)\\.kt$"), null, TargetBackend.JS, true);
                     }
 
+                    @TestMetadata("genericCallableReferenceArguments.kt")
+                    public void testGenericCallableReferenceArguments() throws Exception {
+                        runTest("compiler/testData/codegen/box/coroutines/featureIntersection/callableReference/function/genericCallableReferenceArguments.kt");
+                    }
+
                     @TestMetadata("genericCallableReferencesWithNullableTypes.kt")
                     public void testGenericCallableReferencesWithNullableTypes() throws Exception {
                         runTest("compiler/testData/codegen/box/coroutines/featureIntersection/callableReference/function/genericCallableReferencesWithNullableTypes.kt");
