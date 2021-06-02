@@ -153,7 +153,8 @@ internal class ObjCExportCodeGenerator(
             returnType: LLVMTypeRef,
             receiver: LLVMValueRef,
             selector: String,
-            vararg args: LLVMValueRef
+            switchToNative: Boolean,
+            vararg args: LLVMValueRef,
     ): LLVMValueRef {
 
         val objcMsgSendType = functionType(
@@ -162,7 +163,7 @@ internal class ObjCExportCodeGenerator(
                 listOf(int8TypePtr, int8TypePtr) + args.map { it.type }
         )
 
-        return callFromBridge(msgSender(objcMsgSendType), listOf(receiver, genSelector(selector)) + args)
+        return callFromBridge(msgSender(objcMsgSendType), listOf(receiver, genSelector(selector)) + args, toNative = switchToNative)
     }
 
     fun FunctionGenerationContext.kotlinToObjC(
@@ -640,7 +641,8 @@ private fun ObjCExportCodeGenerator.emitBoxConverter(
         val value = kotlinToObjC(kotlinValue, objCValueType)
 
         val nsNumberSubclass = genGetLinkedClass(namer.numberBoxName(boxClass.classId!!).binaryName)
-        ret(genSendMessage(int8TypePtr, nsNumberSubclass, nsNumberFactorySelector, value))
+        val switchToNative = false // We consider these methods fast enough.
+        ret(genSendMessage(int8TypePtr, nsNumberSubclass, nsNumberFactorySelector, switchToNative, value))
     }
 
     LLVMSetLinkage(converter, LLVMLinkage.LLVMPrivateLinkage)
