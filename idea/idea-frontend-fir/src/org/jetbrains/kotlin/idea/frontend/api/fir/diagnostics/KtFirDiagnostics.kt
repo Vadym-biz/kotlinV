@@ -1802,6 +1802,10 @@ sealed class KtFirDiagnostic<PSI: PsiElement> : KtDiagnosticWithPsi<PSI> {
         abstract val name: Name
     }
 
+    abstract class OperatorRenamedOnImport : KtFirDiagnostic<KtSimpleNameExpression>() {
+        override val diagnosticClass get() = OperatorRenamedOnImport::class
+    }
+
     abstract class ConflictingJvmDeclarations : KtFirDiagnostic<PsiElement>() {
         override val diagnosticClass get() = ConflictingJvmDeclarations::class
     }
