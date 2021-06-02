@@ -13,6 +13,7 @@
 
 #include "Alignment.hpp"
 #include "Alloc.h"
+#include "ExtraObjectData.hpp"
 #include "FinalizerHooks.hpp"
 #include "Memory.h"
 #include "Mutex.hpp"
@@ -515,6 +516,11 @@ public:
             auto* heapObject = new (node.Data()) HeapObjHeader();
             auto* object = &heapObject->object;
             object->typeInfoOrMeta_ = const_cast<TypeInfo*>(typeInfo);
+            // TODO: Optimize freezing to avoid `ExtraObjectData` creation.
+            if ((typeInfo->flags_ & TF_IMMUTABLE) != 0) {
+                auto& flags = ExtraObjectData::Install(object).flags();
+                flags = static_cast<ExtraObjectData::Flags>(flags | ExtraObjectData::FLAGS_FROZEN);
+            }
             return object;
         }
 
@@ -528,6 +534,11 @@ public:
             auto* array = &heapArray->array;
             array->typeInfoOrMeta_ = const_cast<TypeInfo*>(typeInfo);
             array->count_ = count;
+            // TODO: Optimize freezing to avoid `ExtraObjectData` creation.
+            if ((typeInfo->flags_ & TF_IMMUTABLE) != 0) {
+                auto& flags = ExtraObjectData::Install(array->obj()).flags();
+                flags = static_cast<ExtraObjectData::Flags>(flags | ExtraObjectData::FLAGS_FROZEN);
+            }
             return array;
         }
 
