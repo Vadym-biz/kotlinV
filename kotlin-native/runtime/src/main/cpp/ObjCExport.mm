@@ -128,7 +128,7 @@ namespace {
 ALWAYS_INLINE void send_releaseAsAssociatedObject(void* associatedObject, ReleaseMode mode) {
   if (associatedObject != nullptr) {
     auto msgSend = reinterpret_cast<void (*)(void* self, SEL cmd, ReleaseMode mode)>(&objc_msgSend);
-    kotlin::ThreadStateGuard guard(kotlin::ThreadState::kNative);
+    kotlin::ThreadStateGuard guard(kotlin::ThreadState::kNative); // TODO: this is probably wrong for detach from GC thread.
     msgSend(associatedObject, Kotlin_ObjCExport_releaseAsAssociatedObjectSelector, mode);
   }
 }
