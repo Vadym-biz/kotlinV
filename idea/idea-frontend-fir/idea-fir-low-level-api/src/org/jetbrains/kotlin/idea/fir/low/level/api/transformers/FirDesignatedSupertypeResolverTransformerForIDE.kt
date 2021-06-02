@@ -13,21 +13,26 @@ import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.transformers.*
 import org.jetbrains.kotlin.fir.types.FirResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.toSymbol
+import org.jetbrains.kotlin.idea.fir.low.level.api.FirPhaseRunner
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignation
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignationWithFile
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.collectDesignation
-import org.jetbrains.kotlin.idea.fir.low.level.api.file.builder.FirFileBuilder
 import org.jetbrains.kotlin.idea.fir.low.level.api.file.builder.ModuleFileCache
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyDeclarationResolver
+import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyDeclarationResolver.Companion.runCustomResolveUnderLock
 import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.isResolvedForAllDeclarations
-import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedForAllDeclarations
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedPhaseForDeclarationAndChildren
+import org.jetbrains.kotlin.idea.fir.low.level.api.util.checkCanceled
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhase
 
+/**
+ * Transform designation into SUPER_TYPES phase. Affects only for designation, target declaration, it's children and dependents
+ */
 internal class FirDesignatedSupertypeResolverTransformerForIDE(
     private val designation: FirDeclarationUntypedDesignationWithFile,
     private val session: FirSession,
     private val scopeSession: ScopeSession,
-    private val isOnAirResolve: Boolean,
+    private val declarationPhaseDowngraded: Boolean,
     private val moduleFileCache: ModuleFileCache,
     private val firLazyDeclarationResolver: FirLazyDeclarationResolver,
     private val firProviderInterceptor: FirProviderInterceptor?,
@@ -58,6 +63,9 @@ internal class FirDesignatedSupertypeResolverTransformerForIDE(
     private inner class DesignatedFirApplySupertypesTransformer(classDesignation: FirDeclarationUntypedDesignation) :
         FirApplySupertypesTransformer(supertypeComputationSession) {
 
+        override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean =
+            firDeclaration !is FirFile && super.needReplacePhase(firDeclaration)
+
         override fun transformRegularClass(regularClass: FirRegularClass, data: Any?): FirStatement {
             return if (regularClass.resolvePhase >= FirResolvePhase.SUPER_TYPES)
                 transformDeclarationContent(regularClass, data) as FirStatement
@@ -85,40 +93,28 @@ internal class FirDesignatedSupertypeResolverTransformerForIDE(
         }
     }
 
-    private fun collect(designation: FirDeclarationUntypedDesignationWithFile): Set<FirDeclarationUntypedDesignationWithFile> {
-        val visited = mutableSetOf<FirDeclarationUntypedDesignationWithFile>()
-        val toVisit = mutableSetOf<FirDeclarationUntypedDesignationWithFile>()
+    private fun collect(designation: FirDeclarationUntypedDesignationWithFile): Collection<FirDeclarationUntypedDesignationWithFile> {
+        val visited = mutableMapOf<FirDeclaration, FirDeclarationUntypedDesignationWithFile>()
+        val toVisit = mutableListOf<FirDeclarationUntypedDesignationWithFile>()
         toVisit.add(designation)
 
         while (toVisit.isNotEmpty()) {
             for (nowVisit in toVisit) {
+                if (checkPCE) checkCanceled()
                 val resolver = DesignatedFirSupertypeResolverVisitor(nowVisit)
-                if (checkPCE) {
-                    FirFileBuilder.runCustomResolveWithPCECheck(nowVisit.firFile, moduleFileCache) {
-                        firLazyDeclarationResolver.lazyResolveFileDeclaration(
-                            firFile = nowVisit.firFile,
-                            moduleFileCache = moduleFileCache,
-                            toPhase = FirResolvePhase.IMPORTS,
-                            scopeSession = scopeSession,
-                            checkPCE = true,
-                        )
-                        nowVisit.firFile.accept(resolver, null)
-                    }
-                } else {
-                    FirFileBuilder.runCustomResolveUnderLock(nowVisit.firFile, moduleFileCache) {
-                        firLazyDeclarationResolver.lazyResolveFileDeclaration(
-                            firFile = nowVisit.firFile,
-                            moduleFileCache = moduleFileCache,
-                            toPhase = FirResolvePhase.IMPORTS,
-                            scopeSession = scopeSession,
-                            checkPCE = false,
-                        )
-                        nowVisit.firFile.accept(resolver, null)
-                    }
+                runCustomResolveUnderLock(nowVisit.firFile, moduleFileCache, checkPCE) {
+                    firLazyDeclarationResolver.lazyResolveFileDeclaration(
+                        firFile = nowVisit.firFile,
+                        moduleFileCache = moduleFileCache,
+                        toPhase = FirResolvePhase.IMPORTS,
+                        scopeSession = scopeSession,
+                        checkPCE = false,
+                    )
+                    nowVisit.firFile.accept(resolver, null)
                 }
                 resolver.declarationTransformer.ensureDesignationPassed()
+                visited[nowVisit.declaration] = nowVisit
             }
-            visited.addAll(toVisit)
             toVisit.clear()
 
             for (value in supertypeComputationSession.supertypeStatusMap.values) {
@@ -126,41 +122,35 @@ internal class FirDesignatedSupertypeResolverTransformerForIDE(
                 for (reference in value.supertypeRefs) {
                     val classLikeDeclaration = reference.type.toSymbol(session)?.fir
                     if (classLikeDeclaration !is FirClassLikeDeclaration<*>) continue
-                    if (visited.any { it.declaration == classLikeDeclaration }) continue
+                    if (visited.containsKey(classLikeDeclaration)) continue
                     val containingFile = moduleFileCache.getContainerFirFile(classLikeDeclaration) ?: continue
                     toVisit.add(classLikeDeclaration.collectDesignation(containingFile))
                 }
             }
         }
-        return visited
+        return visited.values
     }
 
-    private fun apply(visited: Set<FirDeclarationUntypedDesignationWithFile>) {
+    private fun apply(visited: Collection<FirDeclarationUntypedDesignationWithFile>) {
         fun applyToFileSymbols(designations: List<FirDeclarationUntypedDesignationWithFile>) {
             for (designation in designations) {
-                if (designation.declaration.resolvePhase >= FirResolvePhase.SUPER_TYPES) continue
+                if (checkPCE) checkCanceled()
                 val applier = DesignatedFirApplySupertypesTransformer(designation)
                 designation.firFile.transform<FirElement, Void?>(applier, null)
                 applier.declarationTransformer.ensureDesignationPassed()
-                designation.declaration.ensureResolvedDeep()
             }
         }
 
         val filesToDesignations = visited.groupBy { it.firFile }
         for (designationsPerFile in filesToDesignations) {
-            if (checkPCE) {
-                FirFileBuilder.runCustomResolveWithPCECheck(designationsPerFile.key, moduleFileCache) {
-                    applyToFileSymbols(designationsPerFile.value)
-                }
-            } else {
-                FirFileBuilder.runCustomResolveUnderLock(designationsPerFile.key, moduleFileCache) {
-                    applyToFileSymbols(designationsPerFile.value)
-                }
+            if (checkPCE) checkCanceled()
+            runCustomResolveUnderLock(designationsPerFile.key, moduleFileCache, checkPCE) {
+                applyToFileSymbols(designationsPerFile.value)
             }
         }
     }
 
-    override fun transformDeclaration() {
+    override fun transformDeclaration(phaseRunner: FirPhaseRunner) {
         check(designation.firFile.resolvePhase >= FirResolvePhase.IMPORTS) {
             "Invalid resolve phase of file. Should be IMPORTS but found ${designation.firFile.resolvePhase}"
         }
@@ -172,37 +162,32 @@ internal class FirDesignatedSupertypeResolverTransformerForIDE(
             FirDeclarationUntypedDesignationWithFile(targetPath, resolvableTarget, false, designation.firFile)
         } else designation
 
-        if (targetDesignation.isResolvedForAllDeclarations(FirResolvePhase.SUPER_TYPES, isOnAirResolve)) return
-        targetDesignation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.SUPER_TYPES)
+        if (targetDesignation.isResolvedForAllDeclarations(FirResolvePhase.SUPER_TYPES, declarationPhaseDowngraded)) return
+        targetDesignation.declaration.updateResolvedPhaseForDeclarationAndChildren(FirResolvePhase.SUPER_TYPES)
 
-        val collected = collect(targetDesignation)
-        supertypeComputationSession.breakLoops(session)
-        apply(collected)
-    }
-
-    private fun FirDeclaration.ensureResolvedDeep() {
-        ensureResolved()
-        if (this is FirRegularClass) {
-            declarations.forEach { it.ensureResolvedDeep() }
+        phaseRunner.runPhaseWithCustomResolve(FirResolvePhase.SUPER_TYPES) {
+            val collected = collect(targetDesignation)
+            supertypeComputationSession.breakLoops(session)
+            apply(collected)
         }
+
+        designation.path.forEach(::ensureResolved)
+        ensureResolved(designation.declaration)
+        ensureResolvedDeep(designation.declaration)
     }
 
-    private fun FirDeclaration.ensureResolved() {
-        when (this) {
-            is FirFunction<*> -> Unit
-            is FirProperty -> Unit
+    override fun ensureResolved(declaration: FirDeclaration) {
+        when (declaration) {
+            is FirFunction<*>, is FirProperty, is FirEnumEntry, is FirField, is FirAnonymousInitializer -> Unit
             is FirRegularClass -> {
-                ensurePhase(FirResolvePhase.SUPER_TYPES)
-                check(superTypeRefs.all { it is FirResolvedTypeRef })
+                declaration.ensurePhase(FirResolvePhase.SUPER_TYPES)
+                check(declaration.superTypeRefs.all { it is FirResolvedTypeRef })
             }
             is FirTypeAlias -> {
-                ensurePhase(FirResolvePhase.SUPER_TYPES)
-                check(this.expandedTypeRef is FirResolvedTypeRef)
+                declaration.ensurePhase(FirResolvePhase.SUPER_TYPES)
+                check(declaration.expandedTypeRef is FirResolvedTypeRef)
             }
-            is FirEnumEntry -> Unit
-            is FirField -> Unit
-            is FirAnonymousInitializer -> Unit
-            else -> error { "Unexpected type: ${this::class.simpleName}" }
+            else -> error("Unexpected type: ${declaration::class.simpleName}")
         }
     }
 }

@@ -27,7 +27,9 @@ abstract class FirAbstractPhaseTransformer<D>(
 
     override fun transformFile(file: FirFile, data: D): FirFile {
         checkSessionConsistency(file)
-        file.replaceResolvePhase(transformerPhase)
+        if (file.resolvePhase < transformerPhase) {
+            file.replaceResolvePhase(transformerPhase)
+        }
 
         @Suppress("UNCHECKED_CAST")
         return super.transformFile(file, data) as FirFile

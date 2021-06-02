@@ -40,6 +40,10 @@ internal object FirLazyBodiesCalculator {
         }
     }
 
+    fun calculateLazyBodies(firFile: FirFile) {
+        firFile.transform<FirElement, MutableList<FirDeclaration>>(FirLazyBodiesCalculatorTransformer, mutableListOf())
+    }
+
     fun calculateLazyBodiesForFunction(designation: FirDeclarationDesignation<FirSimpleFunction>) {
         val simpleFunction = designation.declaration
         if (simpleFunction.body !is FirLazyBlock) return

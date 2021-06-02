@@ -52,6 +52,7 @@ internal class FirModuleResolveStateDepended(
             firFileBuilder = originalState.firFileBuilder,
             moduleFileCache = originalState.rootModuleSession.cache,
             fileStructureCache = fileStructureCache,
+            firLazyDeclarationResolver = originalState.firLazyDeclarationResolver,
             state = this,
         )
     }

@@ -27,8 +27,11 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.api.DeclarationCopyBuilder.wi
 import org.jetbrains.kotlin.idea.fir.low.level.api.element.builder.FileTowerProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.element.builder.FirTowerContextProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.element.builder.FirTowerDataContextAllElementsCollector
+import org.jetbrains.kotlin.idea.fir.low.level.api.file.builder.FirFileBuilder
 import org.jetbrains.kotlin.idea.fir.low.level.api.file.structure.FirElementsRecorder
 import org.jetbrains.kotlin.idea.fir.low.level.api.file.structure.KtToFirMapping
+import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.*
+import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyDeclarationResolver
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.RawFirNonLocalDeclarationBuilder
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.RawFirReplacement
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.buildFileFirAnnotation
@@ -122,17 +125,22 @@ object LowLevelFirApiFacadeForResolveOnAir {
     }
 
     private fun onAirGetTowerContextForFile(
-        state: FirModuleResolveState,
+        state: FirModuleResolveStateImpl,
         file: KtFile,
     ): FirTowerDataContext {
         require(file.isPhysical)
         val session = state.getSessionFor(file.getModuleInfo()) as FirIdeSourcesSession
-        val firFile = session.firFileBuilder.getFirFileResolvedToPhaseWithCaching(
-            file,
-            session.cache,
-            FirResolvePhase.IMPORTS,
-            ScopeSession(),
-            checkPCE = false
+
+        val firFile = session.firFileBuilder.buildRawFirFileWithCaching(
+            ktFile = file,
+            cache = session.cache,
+            lazyBodiesMode = true
+        )
+
+        state.firLazyDeclarationResolver.lazyResolveFileDeclaration(
+            firFile = firFile,
+            moduleFileCache = session.cache,
+            toPhase = FirResolvePhase.IMPORTS
         )
 
         val importingScopes = createImportingScopes(firFile, firFile.moduleData.session, ScopeSession(), useCaching = false)
@@ -185,17 +193,18 @@ object LowLevelFirApiFacadeForResolveOnAir {
         collector: FirTowerDataContextCollector? = null,
     ): FirAnnotationCall {
         val annotationCall = buildFileFirAnnotation(
-            firFile.moduleData.session,
-            firFile.moduleData.session.firIdeProvider.kotlinScopeProvider,
-            annotationEntry,
-            replacement
+            session = firFile.moduleData.session,
+            baseScopeProvider = firFile.moduleData.session.firIdeProvider.kotlinScopeProvider,
+            fileAnnotation = annotationEntry,
+            replacement = replacement
         )
         state.firLazyDeclarationResolver.resolveFileAnnotations(
-            firFile,
-            listOf(annotationCall),
-            state.rootModuleSession.cache,
-            ScopeSession(),
-            collector
+            firFile = firFile,
+            annotations = listOf(annotationCall),
+            moduleFileCache = state.rootModuleSession.cache,
+            scopeSession = ScopeSession(),
+            checkPCE = true,
+            collector = collector
         )
 
         return annotationCall
@@ -242,7 +251,7 @@ object LowLevelFirApiFacadeForResolveOnAir {
 
         val isInBodyReplacement = isInBodyReplacement(nonLocalDeclaration, replacement)
 
-        return state.rootModuleSession.cache.firFileLockProvider.withWriteLock(originalFirFile) {
+        return FirLazyDeclarationResolver.runCustomResolveUnderLock(originalFirFile, state.rootModuleSession.cache, true) {
             val copiedFirDeclaration = isInBodyReplacement.ifTrue {
                 when (originalDeclaration) {
                     is FirSimpleFunction ->

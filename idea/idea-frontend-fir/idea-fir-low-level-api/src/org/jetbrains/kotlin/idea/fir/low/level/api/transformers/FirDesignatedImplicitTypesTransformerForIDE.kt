@@ -14,20 +14,24 @@ import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirTowerDataCo
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.ImplicitBodyResolveComputationSession
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.createReturnTypeCalculatorForIDE
 import org.jetbrains.kotlin.fir.types.FirResolvedTypeRef
+import org.jetbrains.kotlin.idea.fir.low.level.api.FirPhaseRunner
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignationWithFile
 import org.jetbrains.kotlin.idea.fir.low.level.api.element.builder.FirIdeDesignatedBodyResolveTransformerForReturnTypeCalculator
 import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.isResolvedForAllDeclarations
-import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedForAllDeclarations
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedPhaseForDeclarationAndChildren
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhase
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhaseForClasses
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.isTargetCallableDeclarationAndInPhase
 
+/**
+ * Transform designation into IMPLICIT_TYPES_BODY_RESOLVE declaration. Affects only for target declaration, it's children and dependents
+ */
 internal class FirDesignatedImplicitTypesTransformerForIDE(
     private val designation: FirDeclarationUntypedDesignationWithFile,
     session: FirSession,
     scopeSession: ScopeSession,
-    private val isOnAirResolve: Boolean,
-    towerDataContextCollector: FirTowerDataContextCollector? = null,
+    private val declarationPhaseDowngraded: Boolean,
+    towerDataContextCollector: FirTowerDataContextCollector?,
     implicitBodyResolveComputationSession: ImplicitBodyResolveComputationSession = ImplicitBodyResolveComputationSession(),
 ) : FirLazyTransformerForIDE, FirImplicitAwareBodyResolveTransformer(
     session,
@@ -47,16 +51,15 @@ internal class FirDesignatedImplicitTypesTransformerForIDE(
 
     override fun transformDeclarationContent(declaration: FirDeclaration, data: ResolutionMode): FirDeclaration =
         ideDeclarationTransformer.transformDeclarationContent(this, declaration, data) {
-            declaration.updateResolvedForAllDeclarations(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE)
             super.transformDeclarationContent(declaration, data)
         }
 
     override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean =
-        ideDeclarationTransformer.needReplacePhase && firDeclaration.resolvePhase < FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE
+        ideDeclarationTransformer.needReplacePhase && firDeclaration !is FirFile && super.needReplacePhase(firDeclaration)
 
-    override fun transformDeclaration() {
-        if (designation.isResolvedForAllDeclarations(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE, isOnAirResolve)) return
-        designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE)
+    override fun transformDeclaration(phaseRunner: FirPhaseRunner) {
+        if (designation.isResolvedForAllDeclarations(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE, declarationPhaseDowngraded)) return
+        designation.declaration.updateResolvedPhaseForDeclarationAndChildren(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE)
         if (designation.isTargetCallableDeclarationAndInPhase(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE)) return
 
         val callableDeclaration = designation.declaration as? FirCallableDeclaration<*>
@@ -66,29 +69,27 @@ internal class FirDesignatedImplicitTypesTransformerForIDE(
         }
         designation.ensurePhaseForClasses(FirResolvePhase.STATUS)
 
-        designation.firFile.transform<FirFile, ResolutionMode>(this, ResolutionMode.ContextIndependent)
-        ideDeclarationTransformer.ensureDesignationPassed()
+        phaseRunner.runPhaseWithCustomResolve(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE) {
+            designation.firFile.transform<FirFile, ResolutionMode>(this, ResolutionMode.ContextIndependent)
+        }
 
-        designation.declaration.ensureResolved()
+        ideDeclarationTransformer.ensureDesignationPassed()
+        ensureResolved(designation.declaration)
+        ensureResolvedDeep(designation.declaration)
     }
 
-    private fun FirDeclaration.ensureResolved() {
-        when (this) {
-            is FirSimpleFunction -> {
-                check(returnTypeRef is FirResolvedTypeRef)
-            }
-            is FirConstructor -> Unit
+    override fun ensureResolved(declaration: FirDeclaration) {
+        when (declaration) {
+            is FirSimpleFunction -> check(declaration.returnTypeRef is FirResolvedTypeRef)
+            is FirField -> check(declaration.returnTypeRef is FirResolvedTypeRef)
+            is FirClass<*>, is FirConstructor, is FirTypeAlias, is FirEnumEntry, is FirAnonymousInitializer -> Unit
             is FirProperty -> {
-                check(returnTypeRef is FirResolvedTypeRef)
-//                check(getter?.returnTypeRef?.let { it is FirResolvedTypeRef } ?: true)
-//                check(setter?.returnTypeRef?.let { it is FirResolvedTypeRef } ?: true)
+                check(declaration.returnTypeRef is FirResolvedTypeRef)
+                //Not resolved for some getters and setters #KT-46995
+//                check(declaration.getter?.returnTypeRef?.let { it is FirResolvedTypeRef } ?: true)
+//                check(declaration.setter?.returnTypeRef?.let { it is FirResolvedTypeRef } ?: true)
             }
-            is FirClass<*> -> declarations.forEach { it.ensureResolved() }
-            is FirTypeAlias -> Unit
-            is FirEnumEntry -> Unit
-            is FirField -> check(returnTypeRef is FirResolvedTypeRef)
-            is FirAnonymousInitializer -> Unit
-            else -> error { "Unexpected type: ${this::class.simpleName}" }
+            else -> error("Unexpected type: ${declaration::class.simpleName}")
         }
     }
 }

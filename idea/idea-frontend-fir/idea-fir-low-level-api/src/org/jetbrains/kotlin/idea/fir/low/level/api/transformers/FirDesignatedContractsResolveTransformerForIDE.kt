@@ -11,17 +11,21 @@ import org.jetbrains.kotlin.fir.resolve.ResolutionMode
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
 import org.jetbrains.kotlin.fir.resolve.transformers.body.resolve.FirDeclarationsResolveTransformer
 import org.jetbrains.kotlin.fir.resolve.transformers.contracts.FirContractResolveTransformer
+import org.jetbrains.kotlin.idea.fir.low.level.api.FirPhaseRunner
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.FirDeclarationUntypedDesignationWithFile
 import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.isResolvedForAllDeclarations
-import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedForAllDeclarations
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.updateResolvedPhaseForDeclarationAndChildren
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.*
 import org.jetbrains.kotlin.idea.fir.low.level.api.util.ensurePhase
 
+/**
+ * Transform designation into CONTRACTS declaration. Affects only for target declaration and it's children
+ */
 internal class FirDesignatedContractsResolveTransformerForIDE(
     private val designation: FirDeclarationUntypedDesignationWithFile,
     session: FirSession,
     scopeSession: ScopeSession,
-    private val isOnAirResolve: Boolean,
+    private val declarationPhaseDowngraded: Boolean,
 ) : FirLazyTransformerForIDE, FirContractResolveTransformer(session, scopeSession) {
 
     private val ideDeclarationTransformer = IDEDeclarationTransformer(designation)
@@ -29,7 +33,6 @@ internal class FirDesignatedContractsResolveTransformerForIDE(
     override val declarationsTransformer: FirDeclarationsResolveTransformer = object : FirDeclarationsContractResolveTransformer(this) {
         override fun transformDeclarationContent(firClass: FirClass<*>, data: ResolutionMode) {
             ideDeclarationTransformer.transformDeclarationContent(this, firClass, data) {
-                designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.CONTRACTS)
                 super.transformDeclarationContent(firClass, data)
                 firClass
             }
@@ -38,38 +41,39 @@ internal class FirDesignatedContractsResolveTransformerForIDE(
 
     override fun transformDeclarationContent(declaration: FirDeclaration, data: ResolutionMode): FirDeclaration =
         ideDeclarationTransformer.transformDeclarationContent(this, declaration, data) {
-            designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.CONTRACTS)
+            designation.declaration.updateResolvedPhaseForDeclarationAndChildren(FirResolvePhase.CONTRACTS)
             super.transformDeclarationContent(declaration, data)
         }
 
     override fun needReplacePhase(firDeclaration: FirDeclaration): Boolean =
-        ideDeclarationTransformer.needReplacePhase && firDeclaration.resolvePhase < FirResolvePhase.CONTRACTS
+        ideDeclarationTransformer.needReplacePhase && firDeclaration !is FirFile && super.needReplacePhase(firDeclaration)
 
-    override fun transformDeclaration() {
-        if (designation.isResolvedForAllDeclarations(FirResolvePhase.CONTRACTS, isOnAirResolve)) return
-        designation.declaration.updateResolvedForAllDeclarations(FirResolvePhase.CONTRACTS)
+    override fun transformDeclaration(phaseRunner: FirPhaseRunner) {
+        if (designation.isResolvedForAllDeclarations(FirResolvePhase.CONTRACTS, declarationPhaseDowngraded)) return
+        designation.declaration.updateResolvedPhaseForDeclarationAndChildren(FirResolvePhase.CONTRACTS)
         if (designation.isTargetCallableDeclarationAndInPhase(FirResolvePhase.CONTRACTS)) return
         designation.ensureDesignation(FirResolvePhase.STATUS)
-        designation.firFile.transform<FirFile, ResolutionMode>(this, ResolutionMode.ContextIndependent)
+
+        phaseRunner.runPhaseWithCustomResolve(FirResolvePhase.CONTRACTS) {
+            designation.firFile.transform<FirFile, ResolutionMode>(this, ResolutionMode.ContextIndependent)
+        }
+
         ideDeclarationTransformer.ensureDesignationPassed()
-        designation.declaration.ensureResolved()
+        ensureResolved(designation.declaration)
+        ensureResolvedDeep(designation.declaration)
     }
 
-    private fun FirDeclaration.ensureResolved() {
-        when (this) {
-            is FirSimpleFunction -> ensurePhase(FirResolvePhase.CONTRACTS)
-            is FirConstructor -> ensurePhase(FirResolvePhase.CONTRACTS)
+    override fun ensureResolved(declaration: FirDeclaration) {
+        when (declaration) {
+            is FirSimpleFunction, is FirConstructor, is FirAnonymousInitializer ->
+                declaration.ensurePhase(FirResolvePhase.CONTRACTS)
             is FirProperty -> {
-                ensurePhase(FirResolvePhase.CONTRACTS)
-                getter?.ensurePhase(FirResolvePhase.CONTRACTS)
-                setter?.ensurePhase(FirResolvePhase.CONTRACTS)
+                declaration.ensurePhase(FirResolvePhase.CONTRACTS)
+                declaration.getter?.ensurePhase(FirResolvePhase.CONTRACTS)
+                declaration.setter?.ensurePhase(FirResolvePhase.CONTRACTS)
             }
-            is FirClass<*> -> declarations.forEach { it.ensureResolved() }
-            is FirTypeAlias -> Unit
-            is FirEnumEntry -> Unit
-            is FirField -> Unit
-            is FirAnonymousInitializer -> ensurePhase(FirResolvePhase.CONTRACTS)
-            else -> error { "Unexpected type: ${this::class.simpleName}" }
+            is FirClass<*>, is FirTypeAlias, is FirEnumEntry, is FirField -> Unit
+            else -> error("Unexpected type: ${declaration::class.simpleName}")
         }
     }
 }

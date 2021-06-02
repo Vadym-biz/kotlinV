@@ -24,7 +24,7 @@ import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyDeclarati
 import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.RawFirNonLocalDeclarationBuilder
 import org.jetbrains.kotlin.idea.fir.low.level.api.providers.FirIdeProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.providers.firIdeProvider
-import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.resolvePhaseWithForAllDeclarations
+import org.jetbrains.kotlin.idea.fir.low.level.api.transformers.FirLazyTransformerForIDE.Companion.resolvePhaseForDeclarationAndChildren
 import org.jetbrains.kotlin.psi.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -135,7 +135,7 @@ internal class ReanalyzableFunctionStructureElement(
                 replaceResolvePhase(upgradedPhase)
             }
             designation.toSequence(includeTarget = true).forEach {
-                it.resolvePhaseWithForAllDeclarations = minOf(it.resolvePhaseWithForAllDeclarations, upgradedPhase)
+                it.resolvePhaseForDeclarationAndChildren = minOf(it.resolvePhaseForDeclarationAndChildren, upgradedPhase)
             }
 
             firLazyDeclarationResolver.lazyResolveDeclaration(
@@ -143,6 +143,7 @@ internal class ReanalyzableFunctionStructureElement(
                 moduleFileCache = cache,
                 toPhase = FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
+                declarationPhaseDowngraded = true,
             )
 
             ReanalyzableFunctionStructureElement(
@@ -196,15 +197,12 @@ internal class ReanalyzablePropertyStructureElement(
                 replaceResolvePhase(upgradedPhase)
             }
 
-            designation.toSequence(includeTarget = true).forEach {
-                it.resolvePhaseWithForAllDeclarations = minOf(it.resolvePhaseWithForAllDeclarations, upgradedPhase)
-            }
-
             firLazyDeclarationResolver.lazyResolveDeclaration(
                 firDeclarationToResolve = originalProperty,
                 moduleFileCache = cache,
                 toPhase = FirResolvePhase.BODY_RESOLVE,
                 checkPCE = true,
+                declarationPhaseDowngraded = true,
             )
 
             ReanalyzablePropertyStructureElement(
