@@ -44,7 +44,7 @@ abstract class AbstractFirDiagnosticsWithLightTreeTest : AbstractFirDiagnosticTe
 }
 
 
-fun TestConfigurationBuilder.baseFirDiagnosticTestConfiguration() {
+fun TestConfigurationBuilder.baseFirDiagnosticTestConfiguration(baseDir: String = ".") {
     globalDefaults {
         frontend = FrontendKinds.FIR
         targetPlatform = JvmPlatforms.defaultJvmPlatform
@@ -59,7 +59,7 @@ fun TestConfigurationBuilder.baseFirDiagnosticTestConfiguration() {
     )
 
     useAdditionalSourceProviders(
-        ::AdditionalDiagnosticsSourceFilesProvider,
+        { AdditionalDiagnosticsSourceFilesProvider(it, baseDir) },
         ::CoroutineHelpersSourceFilesProvider,
     )
     useFrontendFacades(::FirFrontendFacade)
