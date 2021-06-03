@@ -11,7 +11,6 @@ import org.jetbrains.kotlin.fir.declarations.FirFile
 import org.jetbrains.kotlin.fir.scopes.FirScopeProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.FirPhaseRunner
 import org.jetbrains.kotlin.idea.fir.low.level.api.annotations.ThreadSafe
-import org.jetbrains.kotlin.idea.fir.low.level.api.lazy.resolve.FirLazyBodiesCalculator
 import org.jetbrains.kotlin.psi.KtFile
 
 /**
@@ -33,10 +32,6 @@ internal class FirFileBuilder(
         lazyBodiesMode: Boolean
     ): FirFile = cache.fileCached(ktFile) {
         RawFirBuilder(cache.session, scopeProvider, RawFirBuilderMode.lazyBodies(lazyBodiesMode)).buildFirFile(ktFile)
-    }.also {
-        if (!lazyBodiesMode) { //TODO Need Locking?
-            FirLazyBodiesCalculator.calculateLazyBodies(it)
-        }
     }
 }
 
