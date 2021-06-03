@@ -199,8 +199,8 @@ class NaiveSourceBasedFileEntryImpl(
     }
 
     override fun getLineNumber(offset: Int): Int {
-        assert(offset != UNDEFINED_OFFSET)
-        if (offset == SYNTHETIC_OFFSET) return 0
+//        assert(offset != UNDEFINED_OFFSET)
+        if (offset == SYNTHETIC_OFFSET || offset == UNDEFINED_OFFSET) return 0
         return calculatedBeforeLineNumbers.get(offset)
     }
 

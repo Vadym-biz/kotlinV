@@ -96,6 +96,7 @@ internal class Wrapper(val value: Any, override val irClass: IrClass) : Complex 
             "kotlin.collections.HashMap", "kotlin.collections.LinkedHashMap",
             "kotlin.collections.HashSet", "kotlin.collections.LinkedHashSet",
             "kotlin.text.RegexOption", "kotlin.text.Regex", "kotlin.text.Regex.Companion", "kotlin.text.MatchGroup",
+            "kotlin.IllegalArgumentException", "kotlin.AssertionError"
         )
 
         private val intrinsicFunctionToHandler = mapOf(
@@ -159,8 +160,12 @@ internal class Wrapper(val value: Any, override val irClass: IrClass) : Complex 
         fun getConstructorMethod(irConstructor: IrFunction): MethodHandle? {
             val intrinsicValue = irConstructor.parentAsClass.internalName()
             if (intrinsicValue == "kotlin.Char" || intrinsicValue == "kotlin.Long") return null // used in JS, must be handled as intrinsics
+            val methodType = when (intrinsicValue) {
+                // constructor of AssertionError with single String parameter is private, must take another public one
+                "kotlin.AssertionError" -> MethodType.methodType(Void::class.javaPrimitiveType, Object::class.java)
+                else -> irConstructor.getMethodType()
+            }
 
-            val methodType = irConstructor.getMethodType()
             return MethodHandles.lookup().findConstructor(irConstructor.returnType.getClass(true), methodType)
         }
 
@@ -247,6 +252,10 @@ internal class Wrapper(val value: Any, override val irClass: IrClass) : Complex 
                 fqName == "kotlin.collections.HashSet" -> HashSet::class.java
                 fqName == "kotlin.collections.LinkedHashMap" -> LinkedHashMap::class.java
                 fqName == "kotlin.collections.LinkedHashSet" -> LinkedHashSet::class.java
+                fqName == "kotlin.text.StringBuilder" -> StringBuilder::class.java
+                fqName == "kotlin.text.Appendable" -> Appendable::class.java
+                fqName == "kotlin.IllegalArgumentException" -> IllegalArgumentException::class.java
+                fqName == "kotlin.AssertionError" -> AssertionError::class.java
                 fqName == null -> Any::class.java // null if this.isTypeParameter()
                 else -> Class.forName(owner.internalName())
             }

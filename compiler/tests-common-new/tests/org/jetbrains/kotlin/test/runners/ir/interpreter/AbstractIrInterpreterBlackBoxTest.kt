@@ -108,11 +108,7 @@ open class IrInterpreterBoxHandler(testServices: TestServices) : AbstractIrHandl
         if (someAssertionWasFailed) return
         val modules = testServices.moduleStructure.modules
 
-        Assumptions.assumeFalse(modules.flatMap { it.files }.any { it.name.endsWith(".java") }) { "Can't interpret java files" }
         Assumptions.assumeFalse(modules.flatMap { it.files }.singleOrNull()?.name == "sync.kt") { "Ignore `await` method call interpretation" }
-        Assumptions.assumeFalse(AdditionalFilesDirectives.WITH_COROUTINES in testServices.moduleStructure.allDirectives) { "Ignore coroutines" }
-        //Assumptions.assumeFalse(TargetBackend.JVM_IR in testServices.moduleStructure.allDirectives[CodegenTestDirectives.IGNORE_BACKEND]) { "Ignore test because of jvm ir ignore" }
-        additionalIgnores(modules)
 
         val configuration = testServices.compilerConfigurationProvider.getCompilerConfiguration(modules.last())
         val boxFunction = irFiles
@@ -151,7 +147,6 @@ open class IrInterpreterBoxHandler(testServices: TestServices) : AbstractIrHandl
                 canBeEvaluated = false
             }
         }
-        Assumptions.assumeTrue(irFiles.all { delegationChecker.apply { visitElement(it) }.canBeEvaluated }) { "Can't evaluate delegation" }
 
         val checker = object : IrElementVisitorVoid {
             var canBeEvaluated = true
@@ -198,19 +193,30 @@ open class IrInterpreterBoxHandler(testServices: TestServices) : AbstractIrHandl
             }
         }
 
-        Assumptions.assumeTrue(checker.apply { visitCall(boxIrCall, null) }.canBeEvaluated) { "" }
-
         val interpreterResult = try {
             @Suppress("UNCHECKED_CAST")
             val irInterpreter = IrInterpreter(irBuiltins, configuration[CommonConfigurationKeys.IR_BODY_MAP] as Map<IdSignature, IrBody>)
             irInterpreter.interpret(boxIrCall, irFiles.last())
         } catch (e: Throwable) {
             val message = e.message
-            if (message == "Cannot interpret get method on top level non const properties" || message == "Cannot interpret set method on top level properties") {
+            if (
+                message == "Cannot interpret get method on top level non const properties" ||
+                message == "Cannot interpret set method on top level properties" ||
+                message == "Cannot interpret set method on property of object"
+            ) {
                 Assumptions.assumeFalse(true) { message }
                 return
             }
             throw e
+        } finally {
+            Assumptions.assumeFalse(modules.size != 1) { "Can't handle multi module project" }
+            Assumptions.assumeFalse(modules.flatMap { it.files }.any { it.name.endsWith(".java") }) { "Can't interpret java files" }
+            Assumptions.assumeFalse(AdditionalFilesDirectives.WITH_COROUTINES in testServices.moduleStructure.allDirectives) { "Ignore coroutines" }
+            //Assumptions.assumeFalse(TargetBackend.JVM_IR in testServices.moduleStructure.allDirectives[CodegenTestDirectives.IGNORE_BACKEND]) { "Ignore test because of jvm ir ignore" }
+            additionalIgnores(modules)
+
+            Assumptions.assumeTrue(irFiles.all { delegationChecker.apply { visitElement(it) }.canBeEvaluated }) { "Can't evaluate delegation" }
+            Assumptions.assumeTrue(checker.apply { visitCall(boxIrCall, null) }.canBeEvaluated) { "" }
         }
 
         if (interpreterResult is IrErrorExpression) assertions.fail { interpreterResult.description }

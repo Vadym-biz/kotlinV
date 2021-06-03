@@ -19,7 +19,7 @@ import org.jetbrains.kotlin.ir.symbols.IrSymbol
 import org.jetbrains.kotlin.ir.util.fileOrNull
 
 internal class CallStack {
-    private val frames = mutableListOf<Frame>()
+    private val frames = mutableListOf<Frame>() // TODO may be use ArrayDeque
     private val currentFrame get() = frames.last()
     internal val currentFrameOwner get() = currentFrame.currentSubFrameOwner
 

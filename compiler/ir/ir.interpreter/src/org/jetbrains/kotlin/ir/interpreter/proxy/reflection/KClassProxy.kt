@@ -7,8 +7,10 @@ package org.jetbrains.kotlin.ir.interpreter.proxy.reflection
 
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.interpreter.CallInterceptor
+import org.jetbrains.kotlin.ir.interpreter.exceptions.verify
 import org.jetbrains.kotlin.ir.interpreter.internalName
 import org.jetbrains.kotlin.ir.interpreter.proxy.Proxy
+import org.jetbrains.kotlin.ir.interpreter.state.State
 import org.jetbrains.kotlin.ir.interpreter.state.reflection.KClassState
 import kotlin.reflect.*
 
@@ -60,6 +62,7 @@ internal class KClassProxy(
         get() = state.classReference.isInline
 
     override fun isInstance(value: Any?): Boolean {
+        verify(value is State) { "Cannot interpret `isInstance` method for $value" }
         TODO("Not yet implemented")
     }
 
